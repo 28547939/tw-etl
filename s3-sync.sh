@@ -13,7 +13,7 @@ LOCK=$TW_BASE/sync/lock
 #	exit 1
 #fi
 
-if [ -f $LOCK ] && [ -z $LOCK ]; then
+if [ -f $LOCK ] ; then
     echo $LOCK exists
     exit 0
 fi
