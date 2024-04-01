@@ -1,0 +1,5 @@
+daemon/config.yml
+daemon/test/config.yml
+**/*.sw[op]
+daemon/test/online/*
+

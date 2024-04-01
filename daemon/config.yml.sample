@@ -1,0 +1,41 @@
+
+listen_addr: 127.0.0.1
+listen_port: 8080
+
+poll: true
+poll_interval: 1200
+
+ext_streamlist: '/home/tw/ext-streamlist.json'
+
+download_script: '/home/tw/scripts/video-download.sh'
+# for testing
+#download_script: '/home/tw/daemon/test/video-download.sh'
+download_dir: '/home/tw/tw-video/'
+download_log_dir: '/home/tw/streamlink-logs/'
+
+completed_dir: '/home/tw/video/completed'
+
+state_path: '/home/tw/state.json'
+
+retry_count: 30
+
+blocklist:
+    - stream1
+
+streams:
+    720p:
+        format: '720p,720p60,360p,best'
+        streams:
+            - stream2
+
+    360p:
+        format: '360p,720p,720p60,worst'
+        streams:
+            - stream3
+
+    160p:
+        format: '160p,360p,worst'
+        streams:
+            - stream4
+            #etc
+
