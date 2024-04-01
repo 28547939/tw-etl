@@ -7,7 +7,7 @@ import argparse
 import logging
 import yaml, json
 import random
-import traceback
+import traceback 
 
 import datetime
 
@@ -95,7 +95,7 @@ class tw():
         if self.config['poll'] == True:
             await self.spawn_poll_tasks(self.config['poll_interval'])
 
-        # finish
+        # wait for all tasks to complete, including any newly arrived ones
         while len(self.awaitables) > 0:
             awaitable=self.awaitables.pop()
             try:
@@ -215,8 +215,8 @@ class tw():
         router=aiohttp.web.UrlDispatcher()
         router.add_routes([
             web.post('/online/{stream}', self.online_handler),
-            web.post('/offline/{stream}', self.online_handler),
-            web.post('/kill/{stream}', self.online_handler),
+            #web.post('/offline/{stream}', self.online_handler), TODO
+            #web.post('/kill/{stream}', self.online_handler), TODO
             web.get('/state', self.state_handler),
             web.get('/ext-streamlist', ext_streamlist_handler),
             web.post('/reload', reload_handler),
@@ -268,6 +268,7 @@ class tw():
             self._logger.info(f'try_stream({s_id}): already online, abandoning attempt')
             return
 
+        # prevent multiple simultaneous download attempts
         await self.stream_lock[s_id].acquire()
 
 
@@ -362,7 +363,9 @@ class tw():
             # all retries have been exhausted, or there was an exception
 
             try: 
+                # if true, all retries have been exhausted, so we are done
                 if retry_id == s_config.retries + 1:
+                    # this should never happen
                     if state.pid is not None:
                         try:
                             pid=state.pid
@@ -374,6 +377,8 @@ class tw():
                     del self.stream_state[s_id]
                     self.write_state()
 
+                    # don't bother keeping track of which retries were successful (generated data on disk) or not; 
+                    # try moving all of them
                     for i in range(0, retry_id):
                         download_path=video_path(self.config['download_dir'], s_config, state, i)
                         completed_path=video_path(self.config['completed_dir'], s_config, state, i)
@@ -384,17 +389,23 @@ class tw():
                         except OSError as e:
                             failed.append((i, e))
 
+                        # if not a single move was successful, something is wrong
+                        # (we went through all s_config.retries # of retries, meaning an "online" signal was generated,
+                        # but not a single file was written to disk)
                         if len(failed) == retry_id + 1:
                             self._logger.error(f'try_stream: could not move to completed: {failed}')
                 else:
+                    # it was just a failed poll attempt (normal)
                     if state.poll_attempt == True:
                         del self.stream_state[s_id]
                         self.write_state()
                     else:
                         # all retries should be attempted unless it's a poll attempt
+                        # this indicates an exception occurred earlier (in the outermost try)
                         self._logger.warning(f'try_stream({s_id}): exited from loop without completing all retries')
             except Exception as e:
                 self._logger.warning(f'try_stream({s_id}): finally threw exception: {e}')
+            # 'finally' finally, executed no matter what
             finally:
                 self.stream_lock[s_id].release()
 
@@ -462,6 +473,7 @@ async def main():
 
 
     fmt=logging.Formatter(
+        # TODO having issues with taskName
         #fmt='[%(taskName)s][%(asctime)s] %(message)s',
         fmt='[%(asctime)s] %(message)s',
         datefmt='%Y-%m-%d_%H-%M-%S.%f',
