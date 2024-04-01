@@ -5,13 +5,13 @@ set -o nounset
 
 LOCK=$TW_BASE/sync/lock
 
-openssl_args_path=$TW_BASE/sync/openssl-args.txt
-if [ -f $openssl_args_path ]; then
-	openssl_args=$(cat $openssl_args_path)
-else
-	echo $openssl_args_path empty
-	exit 1
-fi
+#openssl_args_path=$TW_BASE/sync/openssl-args.txt
+#if [ -f $openssl_args_path ]; then
+#	openssl_args=$(cat $openssl_args_path)
+#else
+#	echo $openssl_args_path empty
+#	exit 1
+#fi
 
 if [ -f $LOCK ] && [ -z $LOCK ]; then
     echo $LOCK exists
@@ -25,14 +25,14 @@ touch $LOCK
 #
 #
 encrypt () {
-    echo $1 | openssl enc $openssl_args | \
+    echo $1 | openssl enc $OPENSSL_ARGS | \
        xxd -p | tr -d \\n
 }
 
 decrypt () {
     echo $1 | fold -w 2 | \
         perl -ne 'print chr(hex($_))' | \
-        openssl enc -d $openssl_args
+        openssl enc -d $OPENSSL_ARGS
                
 }
 
