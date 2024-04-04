@@ -75,15 +75,12 @@ for f in $(ls -Sr $CONVERT_IN/*.mkv); do
         $ffmpeg -y -hide_banner -loglevel error -i "$f"  -acodec libopus -b:a 24k -vbr on -application voip \
             $dst >/dev/null 2>>$TW_BASE/convert.log
     else
+        fps=$DEFAULT_FPS
 
 
         fps_path=$TW_BASE/convert/fps/$stream
         if [ -f $fps_path ] ; then
             fps=$(cat $fps_path)
-
-            if [ -z $fps ]; then
-                fps=$DEFAULT_FPS
-            fi
         fi
 
         log "converting $f to $dst (resolution $q fps $fps)"
