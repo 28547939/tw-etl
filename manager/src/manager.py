@@ -1,5 +1,3 @@
-#!/usr/local/bin/python3.9
-
 import subprocess
 import asyncio, aiohttp
 from aiohttp import web

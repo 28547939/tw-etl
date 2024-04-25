@@ -1,5 +1,5 @@
-daemon/config.yml
-daemon/test/config.yml
+manager/config.yml
+manager/test/config.yml
 **/*.sw[op]
-daemon/test/online/*
+manager/test/online/*
 
