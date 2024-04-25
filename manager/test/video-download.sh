@@ -10,7 +10,7 @@ set -o nounset
 
 BASE=.
 
-FILE=$BASE/daemon/test/online/$1
+FILE=$BASE/manager/test/online/$1
 
 while true; do
     sleep 1;
