@@ -202,7 +202,7 @@ class tw():
 
     async def start_http_server(self):
 
-        async def reload_handler(request):
+        async def reload_handler(request, match):
             self.load_config()
             return {}
 

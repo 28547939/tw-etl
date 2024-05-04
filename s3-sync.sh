@@ -36,10 +36,6 @@ decrypt () {
                
 }
 
-
-# 2023-11-03 transferred robcdee without any conversion due to lack of space
-
-
 # sync_s3 filename
 sync_s3 () {
     name=$(basename $1)
