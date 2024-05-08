@@ -4,7 +4,7 @@
 set -o nounset
 
 
-# stream qlist outpath logpath
+# stream qlist outpath logpath extra_args
 streamlink -4 -o $3 \
     --logfile $4 \
     --default-stream $2 \
@@ -14,4 +14,5 @@ streamlink -4 -o $3 \
     --stream-timeout 45 \
     --retry-open 5 \
     --loglevel all \
+    $5 \
     https://www.twitch.tv/$1

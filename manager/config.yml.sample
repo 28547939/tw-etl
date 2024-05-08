@@ -39,3 +39,7 @@ streams:
             - stream4
             #etc
 
+
+# add arguments to the streamlink command-line in video-download.sh
+streamlink_args:
+    stream1: [ "--http-proxy", "socks5h://127.0.0.1:8080" ]
