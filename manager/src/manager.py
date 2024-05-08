@@ -120,9 +120,10 @@ class tw():
         self.stream_config={}
         self.ext_streamlist=[]
 
-        for s_id in self.stream_lock.keys():
+        k=list(self.stream_lock.keys())
+        for s_id in k:
             if s_id not in self.stream_state:
-                del s.stream_lock[s_id]
+                del self.stream_lock[s_id]
             
 
         def add_stream(s_config):
@@ -299,13 +300,20 @@ class tw():
                 self.write_state()
 
                 if state.pid is None:
-
-                    proc_obj=await asyncio.create_subprocess_exec(
-                        self.config['download_script'],
+                    args=[
                         s_config.stream_id,
                         s_config.qlist,
                         video_path_thistry,
                         state.log_path,
+                    ]
+
+                    if 'streamlink_args' in self.config and s_id in self.config['streamlink_args']:
+                        args.append(self.config['streamlink_args'][s_id])
+                        self._logger.info(f'try_stream({s_id}): extra arguments for streamlink: {extra_args}')
+
+                    proc_obj=await asyncio.create_subprocess_exec(
+                        self.config['download_script'],
+                        *args,
                         stdout=subprocess.DEVNULL,
                         stderr=subprocess.DEVNULL,
                         start_new_session=True
@@ -467,6 +475,7 @@ async def main():
 
     prs.add_argument('--config', required=True)
     prs.add_argument('--resume', default=False, action='store_true')
+    prs.add_argument('--errorlog')
     args=vars(prs.parse_args())
 
 
@@ -484,6 +493,11 @@ async def main():
     h=logging.StreamHandler()
     h.setFormatter(fmt)
     logger.addHandler(h)
+
+    if 'errorlog' in args:
+        h=logging.FileHandler(args['errorlog'])
+        h.setLevel(logging.ERROR)
+        logger.addHandler(h)
 
 
     i = tw(args['config'], logger, args['resume'])
