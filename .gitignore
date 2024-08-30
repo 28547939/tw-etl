@@ -1,5 +1,5 @@
-manager/config.yml
-manager/test/config.yml
+stream_manager/config.yml
+stream_manager/test/config.yml
 **/*.sw[op]
-manager/test/online/*
+stream_manager/test/online/*
 

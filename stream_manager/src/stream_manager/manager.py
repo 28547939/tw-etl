@@ -63,7 +63,7 @@ class tw():
         self.ext_streamlist=[]
         self.awaitables=[]
         self.stream_lock : Dict[str, asyncio.Lock]={}
-        self.stream_state : Dict[str, state]={}
+        self.stream_state : Dict[str, stream_state]={}
 
         self.load_config()
 
@@ -246,6 +246,30 @@ class tw():
         x = web.TCPSite(runner, str(self._listen_addr), self._listen_port)
         await x.start()
 
+    """
+    TODO
+    Detect a streamlink (shell script) instance which has stalled in some way.
+    Specifically: kill the process if there have not been any recent data, AND no
+    recent retries. 
+    
+    normally, when there isn't any recent data (file modification is not recent), 
+    streamlink will fail and exit, which is our signal to invoke a retry.
+    if this doesn't happen, we need to kill the "stale" process manually
+    """
+    async def stream_healthcheck_task(self, s_id):
+        while True:
+            if s_id not in self.stream_config:
+                break
+
+            await asyncio.sleep(60)
+        
+            
+        
+
+    def video_path(self, directory, s_config, state, retry_id):
+        video_filename=f'{s_config.stream_id}_{s_config.qid}_{state.datestr}_{retry_id}.mkv'
+        video_path=os.path.join(directory, video_filename)
+        return video_path
 
     """
     poll_attempt (formerly "retry_if_empty"): if False, we will process retries even if there was no file created
@@ -258,10 +282,6 @@ class tw():
 
         retry_id=0
 
-        def video_path(directory, s_config, state, retry_id):
-            video_filename=f'{s_config.stream_id}_{s_config.qid}_{state.datestr}_{retry_id}.mkv'
-            video_path=os.path.join(directory, video_filename)
-            return video_path
 
         if s_id in self.stream_state and self.stream_state[s_id].poll_attempt == False and self.stream_lock[s_id].locked():
             self._logger.info(f'try_stream({s_id}): already online, abandoning attempt')
@@ -294,7 +314,7 @@ class tw():
             while retry_id <= s_config.retries:
                 self._logger.info(f'try_stream({s_id}): attempting download (retry_id={retry_id})')
 
-                video_path_thistry=video_path(self.config['download_dir'], s_config, state, retry_id)
+                video_path_thistry=self.video_path(self.config['download_dir'], s_config, state, retry_id)
 
                 state.retry_id=retry_id
                 self.write_state()
@@ -308,7 +328,8 @@ class tw():
                     ]
 
                     if 'streamlink_args' in self.config and s_id in self.config['streamlink_args']:
-                        args.append(self.config['streamlink_args'][s_id])
+                        extra_args=self.config['streamlink_args'][s_id]
+                        args.append(extra_args)
                         self._logger.info(f'try_stream({s_id}): extra arguments for streamlink: {extra_args}')
 
                     proc_obj=await asyncio.create_subprocess_exec(
@@ -386,8 +407,8 @@ class tw():
                     # don't bother keeping track of which retries were successful (generated data on disk) or not; 
                     # try moving all of them
                     for i in range(0, retry_id):
-                        download_path=video_path(self.config['download_dir'], s_config, state, i)
-                        completed_path=video_path(self.config['completed_dir'], s_config, state, i)
+                        download_path=self.video_path(self.config['download_dir'], s_config, state, i)
+                        completed_path=self.video_path(self.config['completed_dir'], s_config, state, i)
                         failed=[]
                         try:
                             os.rename(download_path, completed_path)
@@ -464,48 +485,4 @@ class tw():
         except KeyError as e:
             self._logger.warning(f'load_state failed: {str(e)}') # TODO
             return None
-
-
-async def main():
-
-    prs=argparse.ArgumentParser(
-        prog='',
-        description='',
-    )
-
-    prs.add_argument('--config', required=True)
-    prs.add_argument('--resume', default=False, action='store_true')
-    prs.add_argument('--errorlog')
-    args=vars(prs.parse_args())
-
-
-    fmt=logging.Formatter(
-        # TODO having issues with taskName
-        #fmt='[%(taskName)s][%(asctime)s] %(message)s',
-        fmt='[%(asctime)s] %(message)s',
-        datefmt='%Y-%m-%d_%H-%M-%S.%f',
-        #defaults={
-        #    'taskName': 'main'
-        #}
-    ) 
-    logger=logging.getLogger('tw')
-    logger.setLevel(logging.DEBUG)
-    h=logging.StreamHandler()
-    h.setFormatter(fmt)
-    logger.addHandler(h)
-
-    if 'errorlog' in args:
-        h=logging.FileHandler(args['errorlog'])
-        h.setLevel(logging.ERROR)
-        logger.addHandler(h)
-
-
-    i = tw(args['config'], logger, args['resume'])
-    await i.start()
-
-
-if __name__ == '__main__':
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(main())
-    loop.run_forever()
 
