@@ -13,6 +13,6 @@ streamlink -4 -o $3 \
     --retry-max 5 \
     --stream-timeout 45 \
     --retry-open 5 \
-    --loglevel all \
+    --loglevel none \
     $5 \
     https://www.twitch.tv/$1
