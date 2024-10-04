@@ -3,3 +3,4 @@ stream_manager/test/config.yml
 **/*.sw[op]
 stream_manager/test/online/*
 
+**/*.pyc

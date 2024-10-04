@@ -1,6 +1,10 @@
 import subprocess
-import asyncio, aiohttp
+import asyncio
+
+# TODO: FastAPI
+import aiohttp
 from aiohttp import web
+
 import argparse
 import logging
 import yaml, json
@@ -10,42 +14,17 @@ import traceback
 import datetime
 
 import os
+import re
 
 from dataclasses import dataclass
 
 from typing import Dict, Optional
 
+from stream_manager import state
 
-class json_encoder(json.JSONEncoder):
-    def default(self, x):
-        return x.__dict__
+from stream_manager.common import stream_state, stream_config, json_encoder
+from stream_manager.state import state
 
-
-# config for a stream
-@dataclass()
-class stream_config():
-    stream_id: str
-    qid: str
-    qlist: str
-    retries: int
-
-# state for a specific stream
-@dataclass()
-class stream_state():
-    pid : Optional[int]
-
-    # current retry ID, starting from 0 (first try)
-    retry_id : int
-
-    # config this stream is currently using - could theoretically change
-    # mid-stream
-    config : stream_config
-
-    datestr : str
-    log_path : str
-
-    poll_attempt: bool
-    resumed : bool
 
 class actual_defaultdict(dict):
     def __init__(self, **defaults):
@@ -53,9 +32,9 @@ class actual_defaultdict(dict):
     def __missing__(self, key):
         return self._defaults.get(key)
 
-class tw():
+class manager():
 
-    def __init__(self, config_path, logger, resume):
+    def __init__(self, config_path, logger):
         self._config_path=config_path
         self._logger=logger
 
@@ -67,16 +46,25 @@ class tw():
 
         self.load_config()
 
-        existing_state=self.load_state()
-        if existing_state is not None:
-            if resume != True:
-                raise Exception('state file exists but resume is False')
-
-            self.stream_state=existing_state
-
+        self.state=state(
+            **{
+                k: self.config[k] for k in
+                filter(lambda k: k in ['state_path', 'state_url', 'state_url_timeout_sec'], self.config.keys())
+            }
+        )
 
 
     async def start(self):
+
+        try:
+            self.stream_state=await self.state.load()
+        except Exception as e:
+            self._logger.error(f'could not load state: {e}')
+            return
+
+        if self.stream_state is None:
+            self._logger.warning('note: state.load() returned None, reinitializing state')
+            self.stream_state=dict()
 
         # resume existing state
         for k, state in self.stream_state.items():
@@ -143,22 +131,31 @@ class tw():
                 )
                 add_stream(s_config)
 
-        ext_streamlist_path=self.config['ext_streamlist']
-        with open(ext_streamlist_path, 'rb') as f:
-            ext_streamlist=json.load(f)
+        ext_streamlist_dir=self.config['ext_streamlist_dir']
+        for filename in os.listdir(ext_streamlist_dir):
+            path=os.path.join(ext_streamlist_dir, filename)
+            with open(path, 'rb') as f:
+                ext_streamlist=json.load(f)
 
-            for s_id in ext_streamlist:
-                s_id=s_id.replace('#', '')
-                self.ext_streamlist.append(s_id)
-                if s_id not in self.stream_config:
-                    s_config=stream_config(
-                        stream_id=s_id,
-                        qid='audio_only',
-                        qlist='audio_only',
-                        retries=self.config['retry_count']
-                    )
+                for s_id in ext_streamlist:
+                    s_id=s_id.replace('#', '')
 
-                    add_stream(s_config)
+                    if s_id in self.ext_streamlist:
+                        continue
+
+                    if len(s_id) == 0 or s_id.isspace():
+                        continue
+
+                    self.ext_streamlist.append(s_id)
+                    if s_id not in self.stream_config:
+                        s_config=stream_config(
+                            stream_id=s_id,
+                            qid='audio_only',
+                            qlist='audio_only',
+                            retries=self.config['retry_count']
+                        )
+
+                        add_stream(s_config)
 
         #print(self.config)
         self._logger.info('successfully loaded config and ext-streamlist')
@@ -199,6 +196,10 @@ class tw():
     async def state_handler(self, request, match):
         self._logger.info(f'state_handler')
         return self.stream_state
+
+
+    async def write_state(self):
+        await self.state.write(self.stream_state, state_path=self.config['state_path'], state_url=self.config['state_url'])
 
 
     async def start_http_server(self):
@@ -305,7 +306,7 @@ class tw():
                 poll_attempt=poll_attempt,
                 resumed=False,
             )
-            self.write_state()
+            await self.write_state()
 
         retry_id=self.stream_state[s_id].retry_id
         state=self.stream_state[s_id]
@@ -317,7 +318,7 @@ class tw():
                 video_path_thistry=self.video_path(self.config['download_dir'], s_config, state, retry_id)
 
                 state.retry_id=retry_id
-                self.write_state()
+                await self.write_state()
 
                 if state.pid is None:
                     args=[
@@ -331,17 +332,20 @@ class tw():
                         extra_args=self.config['streamlink_args'][s_id]
                         args.append(extra_args)
                         self._logger.info(f'try_stream({s_id}): extra arguments for streamlink: {extra_args}')
+                    else:
+                        args.append('')
 
+                    # TODO need a debug mode where stdout, stderr are visible
                     proc_obj=await asyncio.create_subprocess_exec(
                         self.config['download_script'],
                         *args,
-                        stdout=subprocess.DEVNULL,
+                        stdout=subprocess.DEVNULL,  
                         stderr=subprocess.DEVNULL,
                         start_new_session=True
                     )
 
                     self.stream_state[s_id].pid=proc_obj.pid
-                    self.write_state()
+                    await self.write_state()
 
                     await proc_obj.wait()
                 else:
@@ -358,7 +362,7 @@ class tw():
 
                 self._logger.debug(f'try_stream({s_id}): process {state.pid} exited, removing PID')
                 self.stream_state[s_id].pid=None
-                self.write_state()
+                await self.write_state()
 
                 # check for file
                 try: 
@@ -402,7 +406,7 @@ class tw():
                             self._logger.warning(f'try_stream({s_id}): unable to kill {pid}: {e}')
 
                     del self.stream_state[s_id]
-                    self.write_state()
+                    await self.write_state()
 
                     # don't bother keeping track of which retries were successful (generated data on disk) or not; 
                     # try moving all of them
@@ -425,7 +429,7 @@ class tw():
                     # it was just a failed poll attempt (normal)
                     if state.poll_attempt == True:
                         del self.stream_state[s_id]
-                        self.write_state()
+                        await self.write_state()
                     else:
                         # all retries should be attempted unless it's a poll attempt
                         # this indicates an exception occurred earlier (in the outermost try)
@@ -456,33 +460,3 @@ class tw():
     async def spawn_poll_tasks(self, interval):
         for s_id, s_config in self.stream_config.items():
             self.awaitables.append(asyncio.create_task(self.poll_task(s_config, interval)))
-
-
-    def write_state(self):
-        with open(self.config['state_path'], 'w', encoding='utf-8') as f:
-            json.dump(self.stream_state, f, cls=json_encoder)
-
-    def load_state(self):
-        try:
-            with open(self.config['state_path'], 'r', encoding='utf-8') as f:
-                struct=json.load(f)
-
-                state={}
-                for k, s_state in struct.items():
-
-                    s_config=stream_config(**(s_state['config']))
-                    del s_state['config']
-
-                    state[k]=stream_state(
-                        **s_state,
-                        config=s_config
-                    )
-
-                return state
-        except FileNotFoundError:
-            return None
-
-        except KeyError as e:
-            self._logger.warning(f'load_state failed: {str(e)}') # TODO
-            return None
-

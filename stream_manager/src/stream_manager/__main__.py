@@ -1,6 +1,7 @@
 import logging
 import asyncio
 import argparse
+import sys
 
 from stream_manager import manager
 
@@ -12,8 +13,11 @@ async def main():
     )
 
     prs.add_argument('--config', required=True)
-    prs.add_argument('--resume', default=False, action='store_true')
-    prs.add_argument('--errorlog')
+
+    # for now, no need for either the 'resume' or 'no-resume' options. if the user does
+    # not want to resume from existing state, it should be deleted or moved aside (since it
+    # will be immediately overwritten anyway once the program initializes its own state)
+    #prs.add_argument('--no-resume', default=False, action='store_true')
     args=vars(prs.parse_args())
 
 
@@ -26,19 +30,18 @@ async def main():
         #    'taskName': 'main'
         #}
     ) 
-    logger=logging.getLogger('tw')
+    logger=logging.getLogger('stream_manager')
     logger.setLevel(logging.DEBUG)
-    h=logging.StreamHandler()
+    h=logging.StreamHandler(stream=sys.stdout)
     h.setFormatter(fmt)
     logger.addHandler(h)
 
-    if 'errorlog' in args:
-        h=logging.FileHandler(args['errorlog'])
-        h.setLevel(logging.ERROR)
-        logger.addHandler(h)
+    h=logging.StreamHandler(stream=sys.stderr)
+    h.setLevel(logging.ERROR)
+    logger.addHandler(h)
 
-
-    i = manager(args['config'], logger, args['resume'])
+    i = manager.manager(args['config'], logger)
+    #await i.start(args['no_resume'])
     await i.start()
 
 
